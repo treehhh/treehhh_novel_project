@@ -1,22 +1,19 @@
-package com.lf.novelbackend.model.entity;
+package com.lf.novelbackend.model.vo;
 
 import com.baomidou.mybatisplus.annotation.*;
+import lombok.Data;
 
 import java.io.Serializable;
 import java.util.Date;
-import lombok.Data;
 
 /**
- * 用户表
- * @TableName user
+ * 用户封装响应
  */
-@TableName(value ="user")
 @Data
-public class User implements Serializable {
+public class UserVO implements Serializable {
     /**
      * 用户ID
      */
-    @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
     /**
@@ -33,11 +30,6 @@ public class User implements Serializable {
      * 手机号
      */
     private String phone;
-
-    /**
-     * 密码（加密存储）
-     */
-    private String password;
 
     /**
      * 用户类型（0-普通用户、1-作者、2-管理员）
@@ -64,21 +56,6 @@ public class User implements Serializable {
      */
     private Date createTime;
 
-    /**
-     * 编辑时间
-     */
-    private Date editTime;
-
-    /**
-     * 编辑时间
-     */
-    private Date updateTime;
-
-    /**
-     * 逻辑删除（0-否、1-是）
-     */
-    @TableLogic
-    private Integer isDelete;
 
     @TableField(exist = false)
     private static final long serialVersionUID = 1L;

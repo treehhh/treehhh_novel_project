@@ -1,16 +1,15 @@
 package com.lf.novelbackend.model.dto.user;
 
-import com.baomidou.mybatisplus.annotation.*;
+import com.baomidou.mybatisplus.annotation.TableField;
 import lombok.Data;
 
 import java.io.Serializable;
-import java.util.Date;
 
 /**
- * 用户修改请求
+ * 用户编辑请求
  */
 @Data
-public class UserUpdateRequest implements Serializable {
+public class UserEditRequest implements Serializable {
     /**
      * 用户ID
      */
@@ -30,16 +29,6 @@ public class UserUpdateRequest implements Serializable {
      * 手机号
      */
     private String phone;
-
-    /**
-     * 用户类型（0-普通用户、1-作者、2-管理员）
-     */
-    private Integer userType;
-
-    /**
-     * 是否是VIP（0-否、1-是）
-     */
-    private Integer isVip;
 
     @TableField(exist = false)
     private static final long serialVersionUID = 1L;

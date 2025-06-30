@@ -5,17 +5,16 @@ import org.apache.commons.lang3.ObjectUtils;
 /**
  * 用户类型枚举
  */
-public enum UserTypeEnum {
+public enum IsVipEnum {
 
-    USER("用户", 0),
-    AUTHOR("作者", 1),
-    ADMIN("管理员", 2);
+    ISNOTVIP("不是Vip", 0),
+    ISVIP("是Vip", 1);
 
     private final String text;
 
     private final Integer value;
 
-    UserTypeEnum(String text, Integer value) {
+    IsVipEnum(String text, Integer value) {
         this.text = text;
         this.value = value;
     }
@@ -26,11 +25,11 @@ public enum UserTypeEnum {
      * @param value
      * @return
      */
-    public static UserTypeEnum getEnumByValue(Integer value) {
+    public static IsVipEnum getEnumByValue(Integer value) {
         if (ObjectUtils.isEmpty(value)) {
             return null;
         }
-        for (UserTypeEnum anEnum : UserTypeEnum.values()) {
+        for (IsVipEnum anEnum : IsVipEnum.values()) {
             if (anEnum.value.equals(value)) {
                 return anEnum;
             }

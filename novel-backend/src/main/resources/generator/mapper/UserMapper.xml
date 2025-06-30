@@ -5,19 +5,19 @@
 <mapper namespace="com.lf.novelbackend.mapper.UserMapper">
 
     <resultMap id="BaseResultMap" type="com.lf.novelbackend.model.entity.User">
-            <id property="id" column="id" />
-            <result property="userName" column="userName" />
-            <result property="avatar" column="avatar" />
-            <result property="phone" column="phone" />
-            <result property="password" column="password" />
-            <result property="userType" column="userType" />
-            <result property="isVip" column="isVip" />
-            <result property="attentionCount" column="attentionCount" />
-            <result property="fansCount" column="fansCount" />
-            <result property="createTime" column="createTime" />
-            <result property="editTime" column="editTime" />
-            <result property="updateTime" column="updateTime" />
-            <result property="isDelete" column="isDelete" />
+        <id property="id" column="id"/>
+        <result property="userName" column="userName"/>
+        <result property="avatar" column="avatar"/>
+        <result property="phone" column="phone"/>
+        <result property="password" column="password"/>
+        <result property="userType" column="userType"/>
+        <result property="isVip" column="isVip"/>
+        <result property="attentionCount" column="attentionCount"/>
+        <result property="fansCount" column="fansCount"/>
+        <result property="createTime" column="createTime"/>
+        <result property="editTime" column="editTime"/>
+        <result property="updateTime" column="updateTime"/>
+        <result property="isDelete" column="isDelete"/>
     </resultMap>
 
     <sql id="Base_Column_List">
