@@ -1,9 +1,12 @@
 package com.lf.novelbackend.controller;
 
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.lf.novelbackend.annotation.UserTypeAuthCheck;
 import com.lf.novelbackend.common.BaseResponse;
 import com.lf.novelbackend.common.DeleteRequest;
 import com.lf.novelbackend.common.ResultUtils;
+import com.lf.novelbackend.constant.UserConstant;
 import com.lf.novelbackend.exception.BusinessException;
 import com.lf.novelbackend.exception.ErrorCode;
 import com.lf.novelbackend.exception.ThrowUtils;
@@ -21,6 +24,7 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.util.List;
 
+import static com.lf.novelbackend.constant.UserConstant.*;
 import static com.lf.novelbackend.service.impl.UserServiceImpl.SALT;
 
 /**
@@ -70,6 +74,45 @@ public class UserController {
     }
 
     /**
+     * 用户成为作家
+     *
+     * @param deleteRequest
+     * @return
+     */
+    @PostMapping("/becomeAuthor")
+    @UserTypeAuthCheck(mustUserType = USER_TYPE)
+    public BaseResponse<Boolean> becomeAuthor(@RequestBody DeleteRequest deleteRequest) {
+        if (deleteRequest == null || deleteRequest.getId() < 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        User user = new User();
+        user.setId(deleteRequest.getId());
+        user.setUserType(AUTHOR_TYPE);
+        boolean result = userService.updateById(user);
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        return ResultUtils.success(true);
+    }
+
+    /**
+     * 用户成为作家
+     *
+     * @param deleteRequest
+     * @return
+     */
+    @PostMapping("/becomeVip")
+    public BaseResponse<Boolean> becomeVip(@RequestBody DeleteRequest deleteRequest) {
+        if (deleteRequest == null || deleteRequest.getId() < 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        User user = new User();
+        user.setId(deleteRequest.getId());
+        user.setIsVip(IS_VIP);
+        boolean result = userService.updateById(user);
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        return ResultUtils.success(true);
+    }
+
+    /**
      * 用户注销
      *
      * @param request
@@ -108,17 +151,23 @@ public class UserController {
      * @return
      */
     @PostMapping("/add")
+    @UserTypeAuthCheck(mustUserType = ADMIN_TYPE)
     public BaseResponse<Long> addUser(@RequestBody UserAddRequest userAddRequest, HttpServletRequest request) {
         if (userAddRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         User user = new User();
         BeanUtils.copyProperties(userAddRequest, user);
-        // 默认密码 12345678
+        // 默认密码 123456
         String defaultPassword = "123456";
         String encryptPassword = DigestUtils.md5DigestAsHex((SALT + defaultPassword).getBytes());
         user.setPassword(encryptPassword);
-        user.setUserName("用户" + RandomStringUtils.randomAlphanumeric(10));
+        if (StrUtil.isBlank(user.getPhone())) {
+            user.setPhone("Test" + RandomStringUtils.randomAlphanumeric(10));
+        }
+        if (StrUtil.isBlank(user.getUserName())) {
+            user.setUserName("用户" + RandomStringUtils.randomAlphanumeric(10));
+        }
         boolean result = userService.save(user);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR,"管理员创建用户失败");
         return ResultUtils.success(user.getId());
@@ -131,6 +180,7 @@ public class UserController {
      * @return
      */
     @PostMapping("/delete")
+    @UserTypeAuthCheck(mustUserType = ADMIN_TYPE)
     public BaseResponse<Boolean> deleteUser(@RequestBody DeleteRequest deleteRequest) {
         if (deleteRequest == null || deleteRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -147,6 +197,7 @@ public class UserController {
      * @return
      */
     @PostMapping("/update")
+    @UserTypeAuthCheck(mustUserType = ADMIN_TYPE)
     public BaseResponse<Boolean> updateUser(@RequestBody UserUpdateRequest userUpdateRequest) {
         if (userUpdateRequest == null || userUpdateRequest.getId() == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -159,7 +210,7 @@ public class UserController {
     }
 
     /**
-     * 根据 id 获取用户（仅管理员）
+     * 根据 id 获取用户
      *
      * @param id
      * @param request
@@ -190,7 +241,7 @@ public class UserController {
     }
 
     /**
-     * 分页获取用户列表（仅管理员）
+     * 分页获取用户列表
      *
      * @param userQueryRequest
      * @param request
@@ -199,6 +250,9 @@ public class UserController {
     @PostMapping("/list/page")
     public BaseResponse<Page<User>> listUserByPage(@RequestBody UserQueryRequest userQueryRequest,
             HttpServletRequest request) {
+        if (userQueryRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
         long current = userQueryRequest.getCurrent();
         long size = userQueryRequest.getPageSize();
         Page<User> userPage = userService.page(new Page<>(current, size),
@@ -207,24 +261,23 @@ public class UserController {
     }
 
     /**
-     * 分页获取用户封装列表
+     * 分页获取用户封装列表（仅管理员）
      *
      * @param userQueryRequest
      * @param request
      * @return
      */
     @PostMapping("/list/page/vo")
+    @UserTypeAuthCheck(mustUserType = ADMIN_TYPE)
     public BaseResponse<Page<UserVO>> listUserVOByPage(@RequestBody UserQueryRequest userQueryRequest,
             HttpServletRequest request) {
         if (userQueryRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        long current = userQueryRequest.getCurrent();
-        long size = userQueryRequest.getPageSize();
-        // 限制爬虫
-        ThrowUtils.throwIf(size > 20, ErrorCode.PARAMS_ERROR);
-        Page<User> userPage = userService.page(new Page<>(current, size),
-                userService.getQueryWrapper(userQueryRequest));
+        int current = userQueryRequest.getCurrent();
+        int size = userQueryRequest.getPageSize();
+        BaseResponse<Page<User>> pageBaseResponse = this.listUserByPage(userQueryRequest, request);
+        Page<User> userPage = pageBaseResponse.getData();
         Page<UserVO> userVOPage = new Page<>(current, size, userPage.getTotal());
         List<UserVO> userVOList = userService.getUserVOList(userPage.getRecords());
         userVOPage.setRecords(userVOList);

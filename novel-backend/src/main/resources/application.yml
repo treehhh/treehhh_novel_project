@@ -10,6 +10,12 @@ spring:
     url: jdbc:mysql://localhost:3306/my_novel
     username: root
     password: 123456
+  # MongoDB 配置
+  data:
+    mongodb:
+      database: mynovel
+      host: 127.0.0.1
+      port: 27017
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: false
