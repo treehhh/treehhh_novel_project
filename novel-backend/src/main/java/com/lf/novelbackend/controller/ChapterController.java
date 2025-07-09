@@ -28,6 +28,7 @@ import javax.servlet.http.HttpServletRequest;
 
 import java.util.List;
 
+import static com.lf.novelbackend.constant.UserConstant.ADMIN_TYPE;
 import static com.lf.novelbackend.constant.UserConstant.AUTHOR_TYPE;
 
 
@@ -109,6 +110,22 @@ public class ChapterController {
     }
 
     /**
+     * 审核章节信息(管理员)
+     *
+     * @param chapterReviewRequest
+     * @return
+     */
+    @PostMapping("/review")
+    @UserTypeAuthCheck(mustUserType = ADMIN_TYPE)
+    public BaseResponse<Boolean> reviewChapter(@RequestBody ChapterReviewRequest chapterReviewRequest, HttpServletRequest request) {
+        if (chapterReviewRequest == null || StrUtil.isBlank(chapterReviewRequest.getId()) || ObjUtil.isNull(chapterReviewRequest.getChapterNumber())) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        Boolean b = chapterService.reviewChapter(chapterReviewRequest, request);
+        return ResultUtils.success(b);
+    }
+
+    /**
      * 发表章节(作者)
      *
      * @param ChapterIdRequest
@@ -140,7 +157,8 @@ public class ChapterController {
         Novel novel = mongoTemplate.findOne(query, Novel.class);
         ThrowUtils.throwIf(novel == null, ErrorCode.NOT_FOUND_ERROR);
         for (Chapter chapter : novel.getChapters()) {
-            if (chapter.getChapterNumber().equals(chapterNumber)) {
+            if (chapter.getChapterNumber().equals(chapterNumber) && chapter.getIsDelete() == 0
+                    && chapter.getIsRelease() == 1 && chapter.getReviewStatus() == ReviewConstant.PASS_REVIEW) {
                 return ResultUtils.success(chapterService.getChapterVOToUser(id, chapter));
             }
         }
@@ -148,7 +166,7 @@ public class ChapterController {
     }
 
     /**
-     * 获取单个章节（作者、管理员）
+     * 获取单个章节（管理员）
      *
      * @param id
      * @return
@@ -162,7 +180,34 @@ public class ChapterController {
         Novel novel = mongoTemplate.findOne(query, Novel.class);
         ThrowUtils.throwIf(novel == null, ErrorCode.NOT_FOUND_ERROR);
         for (Chapter chapter : novel.getChapters()) {
-            if (chapter.getChapterNumber().equals(chapterNumber)) {
+            if (chapter.getChapterNumber().equals(chapterNumber) && chapter.getIsDelete() == 0
+                    && chapter.getIsRelease() == 1) {
+                return ResultUtils.success(chapterService.getChapterVOToAdmin(id, chapter));
+            }
+        }
+        throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
+    }
+
+
+    /**
+     * 获取单个章节（作者）
+     *
+     * @param id
+     * @return
+     */
+    @GetMapping("/get/author_vo")
+    public BaseResponse<ChapterVOToAdmin> getChapterVOToAuthor(String id, Integer chapterNumber, HttpServletRequest request) {
+        if (StrUtil.isBlank(id) || ObjUtil.isNull(chapterNumber)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        // 作者只能查看到自己小说的章节
+        chapterService.validateAuthor(id, request);
+
+        Query query = chapterService.getChapterQueryById(id, chapterNumber);
+        Novel novel = mongoTemplate.findOne(query, Novel.class);
+        ThrowUtils.throwIf(novel == null, ErrorCode.NOT_FOUND_ERROR);
+        for (Chapter chapter : novel.getChapters()) {
+            if (chapter.getChapterNumber().equals(chapterNumber) && chapter.getIsDelete() == 0) {
                 return ResultUtils.success(chapterService.getChapterVOToAdmin(id, chapter));
             }
         }
@@ -194,7 +239,7 @@ public class ChapterController {
 
 
     /**
-     * 获取分页章节（作者、管理员）
+     * 获取分页章节（管理员）
      *
      * @param chapterQueryRequest
      * @return
@@ -204,6 +249,31 @@ public class ChapterController {
         if (chapterQueryRequest == null || StrUtil.isBlank(chapterQueryRequest.getId())) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
+        int current = chapterQueryRequest.getCurrent();
+        int pageSize = chapterQueryRequest.getPageSize();
+        // 管理员只能查看“已发布”的章节
+        chapterQueryRequest.setIsRelease(1);
+
+        Page<Chapter> chapterPage = chapterService.getChapterPage(chapterQueryRequest);
+        List<ChapterVOToAdmin> chapterVOToAdminList = chapterService.getChapterVOToAdminList(chapterQueryRequest.getId(), chapterPage.getContent());
+        PageRequest pageRequest = PageRequest.of(current, pageSize);
+        return ResultUtils.success(new PageImpl<>(chapterVOToAdminList, pageRequest, chapterPage.getTotalElements()));
+    }
+
+    /**
+     * 获取分页章节（作者）
+     *
+     * @param chapterQueryRequest
+     * @return
+     */
+    @PostMapping("/page/author_vo")
+    public BaseResponse<Page<ChapterVOToAdmin>> getChapterVOToAuthorPage(@RequestBody ChapterQueryRequest chapterQueryRequest, HttpServletRequest request) {
+        if (chapterQueryRequest == null || StrUtil.isBlank(chapterQueryRequest.getId())) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        // 作者只能查看到自己小说的章节
+        chapterService.validateAuthor(chapterQueryRequest.getId(), request);
+
         int current = chapterQueryRequest.getCurrent();
         int pageSize = chapterQueryRequest.getPageSize();
         Page<Chapter> chapterPage = chapterService.getChapterPage(chapterQueryRequest);

@@ -1,19 +1,25 @@
 package com.lf.novelbackend.service.impl;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.NumberUtil;
 import cn.hutool.core.util.ObjUtil;
 import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.lf.novelbackend.exception.BusinessException;
 import com.lf.novelbackend.exception.ErrorCode;
 import com.lf.novelbackend.exception.ThrowUtils;
 import com.lf.novelbackend.model.dto.novel.NovelAddRequest;
+import com.lf.novelbackend.model.dto.novel.NovelMarkRequest;
 import com.lf.novelbackend.model.dto.novel.NovelQueryRequest;
 import com.lf.novelbackend.model.dto.novel.NovelUpdateRequest;
 import com.lf.novelbackend.model.entity.Novel;
+import com.lf.novelbackend.model.entity.NovelUser;
 import com.lf.novelbackend.model.entity.User;
 import com.lf.novelbackend.model.vo.NovelVO;
 import com.lf.novelbackend.model.vo.UserVO;
+import com.lf.novelbackend.service.ChapterService;
 import com.lf.novelbackend.service.NovelService;
+import com.lf.novelbackend.service.NovelUserService;
 import com.lf.novelbackend.service.UserService;
 import com.mongodb.client.result.UpdateResult;
 import lombok.extern.slf4j.Slf4j;
@@ -46,6 +52,12 @@ public class NovelServiceImpl implements NovelService {
 
     @Resource
     private MongoTemplate mongoTemplate;
+
+    @Resource
+    private ChapterService chapterService;
+
+    @Resource
+    private NovelUserService novelUserService;
 
     @Override
     public NovelVO getNovelVO(Novel novel) {
@@ -81,15 +93,15 @@ public class NovelServiceImpl implements NovelService {
         String coverUrl = novelAddRequest.getCoverUrl();
         String description = novelAddRequest.getDescription();
 
-        ThrowUtils.throwIf(StrUtil.isBlank(title),ErrorCode.PARAMS_ERROR,"小说标题不能为空");
-        ThrowUtils.throwIf(CollUtil.isEmpty(tags),ErrorCode.PARAMS_ERROR,"小说标签不能为空");
-        ThrowUtils.throwIf(StrUtil.isBlank(category),ErrorCode.PARAMS_ERROR,"小说分类不能为空");
-        ThrowUtils.throwIf(StrUtil.isBlank(coverUrl),ErrorCode.PARAMS_ERROR,"小说封面不能为空");
-        ThrowUtils.throwIf(StrUtil.isBlank(description),ErrorCode.PARAMS_ERROR,"小说简介不能为空");
+        ThrowUtils.throwIf(StrUtil.isBlank(title), ErrorCode.PARAMS_ERROR, "小说标题不能为空");
+        ThrowUtils.throwIf(CollUtil.isEmpty(tags), ErrorCode.PARAMS_ERROR, "小说标签不能为空");
+        ThrowUtils.throwIf(StrUtil.isBlank(category), ErrorCode.PARAMS_ERROR, "小说分类不能为空");
+        ThrowUtils.throwIf(StrUtil.isBlank(coverUrl), ErrorCode.PARAMS_ERROR, "小说封面不能为空");
+        ThrowUtils.throwIf(StrUtil.isBlank(description), ErrorCode.PARAMS_ERROR, "小说简介不能为空");
 
         // 补充字段
         Novel novel = new Novel();
-        BeanUtils.copyProperties(novelAddRequest,novel);
+        BeanUtils.copyProperties(novelAddRequest, novel);
         User loginUser = userService.getLoginUser(request);
         novel.setAuthorId(loginUser.getId());
         // 数据库操作
@@ -110,20 +122,13 @@ public class NovelServiceImpl implements NovelService {
         String coverUrl = novelUpdateRequest.getCoverUrl();
         String description = novelUpdateRequest.getDescription();
 
-        // 判断要修改的数据是否存在
         Query query = new Query();
         query.addCriteria(Criteria.where("_id").is(new ObjectId(id)));
         query.addCriteria(Criteria.where("isDelete").is(0));
-        Novel novel = mongoTemplate.findOne(query, Novel.class);
-        ThrowUtils.throwIf(novel == null, ErrorCode.NOT_FOUND_ERROR);
+
 
         // 仅作者本人可操作
-        User loginUser = userService.getLoginUser(request);
-        Long authorId = novel.getAuthorId();
-        ThrowUtils.throwIf(authorId == null, ErrorCode.NO_AUTH_ERROR, "非该小说作者");
-        if (!authorId.equals(loginUser.getId())) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "非该小说作者");
-        }
+        chapterService.validateAuthor(id, request);
 
         // 拼接update条件
         Update update = new Update();
@@ -193,6 +198,55 @@ public class NovelServiceImpl implements NovelService {
         return query;
     }
 
+    // TODO 要加锁和事务
+    @Override
+    public Boolean mark(NovelMarkRequest novelMarkRequest, HttpServletRequest request) {
+        if (novelMarkRequest == null || StrUtil.isBlank(novelMarkRequest.getId())) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        // 校验参数
+        String id = novelMarkRequest.getId();
+        Double myRating = novelMarkRequest.getRating();
+
+        ThrowUtils.throwIf(myRating == null, ErrorCode.PARAMS_ERROR, "不能传递空的分数");
+
+        // 获取登录用户信息
+        User loginUser = userService.getLoginUser(request);
+
+        // 每个用户每个小说限一次
+        QueryWrapper<NovelUser> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("userId", loginUser.getId());
+        queryWrapper.eq("novelId", id);
+
+        NovelUser novelUser = novelUserService.getOne(queryWrapper);
+        ThrowUtils.throwIf(novelUser == null, ErrorCode.NOT_FOUND_ERROR);
+        ThrowUtils.throwIf(novelUser.getIsRated() == 1, ErrorCode.OPERATION_ERROR, "已经打过分数了");
+
+        // 获取分数和打分人数
+        Novel novel = mongoTemplate.findById(new ObjectId(id), Novel.class);
+        ThrowUtils.throwIf(novel == null, ErrorCode.NOT_FOUND_ERROR);
+        Double curRating = novel.getRating();
+        Integer ratingCount = novel.getRatingCount();
+
+        // 计算新分数
+        double newRating = (curRating * ratingCount + myRating) / (ratingCount + 1);
+        newRating = NumberUtil.round(newRating, 1).doubleValue();
+
+        // 更新小说分数和打分人数
+        Query query = new Query();
+        query.addCriteria(Criteria.where("_id").is(new ObjectId(id)));
+        query.addCriteria(Criteria.where("isDelete").is(0));
+        Update update = new Update();
+        update.set("rating", newRating);
+        update.set("ratingCount", ratingCount + 1);
+        UpdateResult updateResult = mongoTemplate.updateFirst(query, update, Novel.class);
+        ThrowUtils.throwIf(updateResult.getModifiedCount() < 1, ErrorCode.OPERATION_ERROR);
+        // 修改小说-用户表打分标识
+        novelUser.setIsRated(1);
+        boolean result = novelUserService.updateById(novelUser);
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        return true;
+    }
 }
 
 

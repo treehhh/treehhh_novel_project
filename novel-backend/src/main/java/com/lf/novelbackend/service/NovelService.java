@@ -1,6 +1,7 @@
 package com.lf.novelbackend.service;
 
 import com.lf.novelbackend.model.dto.novel.NovelAddRequest;
+import com.lf.novelbackend.model.dto.novel.NovelMarkRequest;
 import com.lf.novelbackend.model.dto.novel.NovelQueryRequest;
 import com.lf.novelbackend.model.dto.novel.NovelUpdateRequest;
 import com.lf.novelbackend.model.entity.Novel;
@@ -21,4 +22,5 @@ public interface NovelService {
 
     Query getNovelQuery(NovelQueryRequest novelQueryRequest);
 
+    Boolean mark(NovelMarkRequest novelMarkRequest, HttpServletRequest request);
 }

@@ -10,6 +10,7 @@ import com.lf.novelbackend.model.dto.chapter.*;
 import com.lf.novelbackend.model.entity.Chapter;
 import com.lf.novelbackend.model.entity.Novel;
 import com.lf.novelbackend.model.entity.User;
+import com.lf.novelbackend.model.enums.ReviewStatusEnum;
 import com.lf.novelbackend.model.vo.ChapterVOToAdmin;
 import com.lf.novelbackend.model.vo.ChapterVOToUser;
 import com.lf.novelbackend.service.ChapterService;
@@ -34,6 +35,7 @@ import org.springframework.stereotype.Service;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -108,20 +110,12 @@ public class ChapterServiceImpl implements ChapterService {
         ThrowUtils.throwIf(ObjUtil.isNull(chapterNumber), ErrorCode.PARAMS_ERROR, "章节序号不能为空");
         ThrowUtils.throwIf(StrUtil.isBlank(content), ErrorCode.PARAMS_ERROR, "章节内容不能为空");
 
-
         // 仅作者本人可操作
-        Novel novel = mongoTemplate.findById(new ObjectId(id), Novel.class);
-        ThrowUtils.throwIf(novel == null, ErrorCode.NOT_FOUND_ERROR);
-        User loginUser = userService.getLoginUser(request);
-        Long authorId = novel.getAuthorId();
-        ThrowUtils.throwIf(authorId == null, ErrorCode.NO_AUTH_ERROR, "非该小说作者");
-        if (!authorId.equals(loginUser.getId())) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "非该小说作者");
-        }
+        this.validateAuthor(id, request);
 
         // 校验数据库序号字段是否唯一
         Query query = getChapterQueryById(id, chapterNumber);
-        novel = mongoTemplate.findOne(query, Novel.class);
+        Novel novel = mongoTemplate.findOne(query, Novel.class);
         ThrowUtils.throwIf(novel != null, ErrorCode.OPERATION_ERROR, "章节序号已存在");
 
         // 判断小说是否存在
@@ -158,17 +152,8 @@ public class ChapterServiceImpl implements ChapterService {
         // 拼接query条件
         Query query = getChapterQueryById(id, chapterNumber);
 
-        // 判断要修改的数据是否存在
-        Novel novel = mongoTemplate.findOne(query, Novel.class);
-        ThrowUtils.throwIf(novel == null, ErrorCode.NOT_FOUND_ERROR);
-
         // 仅作者本人可操作
-        User loginUser = userService.getLoginUser(request);
-        Long authorId = novel.getAuthorId();
-        ThrowUtils.throwIf(authorId == null, ErrorCode.NO_AUTH_ERROR, "非该小说作者");
-        if (!authorId.equals(loginUser.getId())) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "非该小说作者");
-        }
+        this.validateAuthor(id, request);
 
         // 拼接update条件
         Update update = new Update();
@@ -184,6 +169,8 @@ public class ChapterServiceImpl implements ChapterService {
         update.set("chapters.$.reviewId", null);
         update.set("chapters.$.reviewComment", null);
         update.set("chapters.$.reviewTime", null);
+        // 修改为“未发布”状态
+        update.set("chapters.$.isRelease", 0);
 
         // 数据库操作
         UpdateResult updateResult = mongoTemplate.updateFirst(query, update, Novel.class);
@@ -207,17 +194,8 @@ public class ChapterServiceImpl implements ChapterService {
         // 拼接query条件
         Query query = getChapterQueryById(id, chapterNumber);
 
-        // 判断要修改的数据是否存在
-        Novel novel = mongoTemplate.findOne(query, Novel.class);
-        ThrowUtils.throwIf(novel == null, ErrorCode.NOT_FOUND_ERROR);
-
         // 仅作者本人可操作
-        User loginUser = userService.getLoginUser(request);
-        Long authorId = novel.getAuthorId();
-        ThrowUtils.throwIf(authorId == null, ErrorCode.NO_AUTH_ERROR, "非该小说作者");
-        if (!authorId.equals(loginUser.getId())) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "非该小说作者");
-        }
+        this.validateAuthor(id, request);
 
         // 拼接update条件
         Update update = new Update();
@@ -235,6 +213,42 @@ public class ChapterServiceImpl implements ChapterService {
     }
 
     @Override
+    public Boolean reviewChapter(ChapterReviewRequest chapterReviewRequest, HttpServletRequest request) {
+        if (chapterReviewRequest == null || StrUtil.isBlank(chapterReviewRequest.getId()) || ObjUtil.isNull(chapterReviewRequest.getChapterNumber())) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        // 获取字段
+        String id = chapterReviewRequest.getId();
+        Integer chapterNumber = chapterReviewRequest.getChapterNumber();
+        Integer reviewStatus = chapterReviewRequest.getReviewStatus();
+        String reviewComment = chapterReviewRequest.getReviewComment();
+
+        // 参数校验
+        ReviewStatusEnum reviewStatusEnum = ReviewStatusEnum.getEnumByValue(reviewStatus);
+        ThrowUtils.throwIf(reviewStatusEnum == null, ErrorCode.PARAMS_ERROR, "审核状态非法");
+
+        // 校验章节是否存在
+        Query query = getChapterQueryById(id, chapterNumber);
+        Novel novel = mongoTemplate.findOne(query, Novel.class);
+        ThrowUtils.throwIf(novel == null, ErrorCode.NOT_FOUND_ERROR);
+
+        // 获取登录用户
+        User loginUser = userService.getLoginUser(request);
+
+        // 拼接update条件
+        Update update = new Update();
+        update.set("chapters.$.reviewStatus", reviewStatus);
+        update.set("chapters.$.reviewId", loginUser.getId());
+        update.set("chapters.$.reviewComment", reviewComment);
+        update.set("chapters.$.reviewTime", new Date());
+
+        // 数据库操作
+        UpdateResult updateResult = mongoTemplate.updateFirst(query, update, Novel.class);
+        ThrowUtils.throwIf(updateResult.getModifiedCount() < 1, ErrorCode.OPERATION_ERROR, "章节审核修改失败");
+        return true;
+    }
+
+    @Override
     public Boolean releaseChapter(ChapterIdRequest chapterIdRequest, HttpServletRequest request) {
         if (chapterIdRequest == null || StrUtil.isBlank(chapterIdRequest.getId()) || ObjUtil.isNull(chapterIdRequest.getChapterNumber())) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -246,17 +260,8 @@ public class ChapterServiceImpl implements ChapterService {
         // 拼接query条件
         Query query = getChapterQueryById(id, chapterNumber);
 
-        // 判断要修改的数据是否存在
-        Novel novel = mongoTemplate.findOne(query, Novel.class);
-        ThrowUtils.throwIf(novel == null, ErrorCode.NOT_FOUND_ERROR);
-
         // 仅作者本人可操作
-        User loginUser = userService.getLoginUser(request);
-        Long authorId = novel.getAuthorId();
-        ThrowUtils.throwIf(authorId == null, ErrorCode.NO_AUTH_ERROR, "非该小说作者");
-        if (!authorId.equals(loginUser.getId())) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "非该小说作者");
-        }
+        this.validateAuthor(id, request);
 
         // 拼接update条件
         Update update = new Update();
@@ -278,17 +283,8 @@ public class ChapterServiceImpl implements ChapterService {
         String id = chapterIdRequest.getId();
         // 拼接查询条件
         Query query = getChapterQueryById(id, chapterNumber);
-        // 判断要删除的数据是否存在
-        Novel novel = mongoTemplate.findOne(query, Novel.class);
-        ThrowUtils.throwIf(novel == null, ErrorCode.NOT_FOUND_ERROR);
-
         // 仅作者本人可操作
-        User loginUser = userService.getLoginUser(request);
-        Long authorId = novel.getAuthorId();
-        ThrowUtils.throwIf(authorId == null, ErrorCode.NO_AUTH_ERROR, "非该小说作者");
-        if (!authorId.equals(loginUser.getId())) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "非该小说作者");
-        }
+        this.validateAuthor(id, request);
         // 数据库操作
         Update update = new Update();
         update.set("chapters.$.isDelete", 1);
@@ -297,38 +293,6 @@ public class ChapterServiceImpl implements ChapterService {
         return true;
     }
 
-//    @Override
-//    public List<Chapter> filterChapterList(ChapterQueryRequest chapterQueryRequest) {
-//        if (chapterQueryRequest == null || StrUtil.isBlank(chapterQueryRequest.getId())) {
-//            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-//        }
-//        // 获取字段
-//        String id = chapterQueryRequest.getId();
-//        Integer isRelease = chapterQueryRequest.getIsRelease();
-//        Integer reviewStatus = chapterQueryRequest.getReviewStatus();
-//        Long reviewId = chapterQueryRequest.getReviewId();
-//        // 获取数组
-//        Query query = new Query();
-//        query.addCriteria(Criteria.where("_id").is(new ObjectId(id)));
-//        query.addCriteria(Criteria.where("isDelete").is(0));
-//        Novel novel = mongoTemplate.findOne(query, Novel.class);
-//        ThrowUtils.throwIf(novel == null , ErrorCode.NOT_FOUND_ERROR);
-//        return novel.getChapters().stream().filter(chapter -> {
-//            boolean b1=true;
-//            if(ObjUtil.isNotNull(isRelease) && !chapter.getIsRelease().equals(isRelease)){
-//                b1=false;
-//            }
-//            boolean b2=true;
-//            if(ObjUtil.isNotNull(reviewStatus) && !chapter.getReviewStatus().equals(reviewStatus)){
-//                b2=false;
-//            }
-//            boolean b3=true;
-//            if(ObjUtil.isNotNull(reviewId) && !chapter.getReviewId().equals(reviewId)){
-//                b3=false;
-//            }
-//            return b1 && b2 && b3;
-//        }).collect(Collectors.toList());
-//    }
 
     /**
      * 获取筛选后的分页排序章节列表
@@ -413,6 +377,17 @@ public class ChapterServiceImpl implements ChapterService {
         return query;
     }
 
+    @Override
+    public void validateAuthor(String id, HttpServletRequest request) {
+        Novel novel = mongoTemplate.findById(new ObjectId(id), Novel.class);
+        ThrowUtils.throwIf(novel == null, ErrorCode.NOT_FOUND_ERROR);
+        User loginUser = userService.getLoginUser(request);
+        Long authorId = novel.getAuthorId();
+        ThrowUtils.throwIf(authorId == null, ErrorCode.NO_AUTH_ERROR, "非该小说作者");
+        if (!authorId.equals(loginUser.getId())) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "非该小说作者");
+        }
+    }
 }
 
 

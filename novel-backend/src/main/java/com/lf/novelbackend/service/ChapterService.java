@@ -4,6 +4,7 @@ package com.lf.novelbackend.service;
 import com.lf.novelbackend.model.dto.chapter.*;
 import com.lf.novelbackend.model.dto.comment.CommentDeleteRequest;
 import com.lf.novelbackend.model.entity.Chapter;
+import com.lf.novelbackend.model.entity.Novel;
 import com.lf.novelbackend.model.vo.ChapterVOToAdmin;
 import com.lf.novelbackend.model.vo.ChapterVOToUser;
 import org.springframework.data.domain.Page;
@@ -29,6 +30,8 @@ public interface ChapterService {
 
     Boolean saveChapter(ChapterUpdateRequest chapterUpdateRequest, HttpServletRequest request);
 
+    Boolean reviewChapter(ChapterReviewRequest chapterReviewRequest, HttpServletRequest request);
+
     Boolean releaseChapter(ChapterIdRequest chapterIdRequest, HttpServletRequest request);
 
     Boolean deleteChapter(ChapterIdRequest chapterIdRequest, HttpServletRequest request);
@@ -38,4 +41,6 @@ public interface ChapterService {
     Page<Chapter> getChapterPage(ChapterQueryRequest chapterQueryRequest);
 
     Query getChapterQueryById(String id, Integer chapterNumber);
+
+    void validateAuthor(String id, HttpServletRequest request);
 }

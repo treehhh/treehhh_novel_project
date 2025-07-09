@@ -9,11 +9,13 @@ import com.lf.novelbackend.exception.BusinessException;
 import com.lf.novelbackend.exception.ErrorCode;
 import com.lf.novelbackend.exception.ThrowUtils;
 import com.lf.novelbackend.model.dto.novel.NovelAddRequest;
+import com.lf.novelbackend.model.dto.novel.NovelMarkRequest;
 import com.lf.novelbackend.model.dto.novel.NovelQueryRequest;
 import com.lf.novelbackend.model.dto.novel.NovelUpdateRequest;
 import com.lf.novelbackend.model.entity.Novel;
 import com.lf.novelbackend.model.entity.User;
 import com.lf.novelbackend.model.vo.NovelVO;
+import com.lf.novelbackend.service.ChapterService;
 import com.lf.novelbackend.service.NovelService;
 import com.lf.novelbackend.service.UserService;
 import com.mongodb.client.result.UpdateResult;
@@ -50,6 +52,9 @@ public class NovelController {
     private NovelService novelService;
 
     @Resource
+    private ChapterService chapterService;
+
+    @Resource
     private MongoTemplate mongoTemplate;
 
     /**
@@ -84,16 +89,9 @@ public class NovelController {
         Query query = new Query();
         query.addCriteria(Criteria.where("_id").is(new ObjectId(id)));
         query.addCriteria(Criteria.where("isDelete").is(0));
-        // 判断要删除的数据是否存在
-        Novel novel = mongoTemplate.findOne(query, Novel.class);
-        ThrowUtils.throwIf(novel == null, ErrorCode.NOT_FOUND_ERROR);
+
         // 仅作者本人可操作
-        User loginUser = userService.getLoginUser(request);
-        Long authorId = novel.getAuthorId();
-        ThrowUtils.throwIf(authorId == null, ErrorCode.NO_AUTH_ERROR, "非该小说作者");
-        if (!authorId.equals(loginUser.getId())) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "非该小说作者");
-        }
+        chapterService.validateAuthor(id, request);
         // 数据库操作
         Update update = new Update();
         update.set("isDelete", 1);
@@ -187,6 +185,16 @@ public class NovelController {
         List<NovelVO> novelVOList = novelService.getNovelVOList(novelPage.getContent());
         Page<NovelVO> novelVOPage = new PageImpl<>(novelVOList, novelPage.getPageable(), novelPage.getTotalElements());
         return ResultUtils.success(novelVOPage);
+    }
+
+
+    @PostMapping("/mark")
+    public BaseResponse<Boolean> mark(@RequestBody NovelMarkRequest novelMarkRequest, HttpServletRequest request) {
+        if (novelMarkRequest == null || StrUtil.isBlank(novelMarkRequest.getId())) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        Boolean b = novelService.mark(novelMarkRequest, request);
+        return ResultUtils.success(b);
     }
 
 }
