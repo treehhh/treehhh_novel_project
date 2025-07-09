@@ -1,5 +1,6 @@
 package com.lf.novelbackend.model.vo;
 
+import com.lf.novelbackend.model.entity.Chapter;
 import com.lf.novelbackend.model.entity.Comment;
 import lombok.Data;
 
@@ -20,6 +21,7 @@ public class NovelVO {
     private Integer ratingCount;            // 评分人数（整数）
     private Integer viewCount;              // 浏览人数（整数）
     private Integer totalChapters;          // 总章节数（整数）
+    private List<Chapter> chapters;     // 章节（嵌套文档数组）
     private List<Comment> comments;     // 书评（嵌套文档数组）
     private Date createTime;            // 创建时间
 }
